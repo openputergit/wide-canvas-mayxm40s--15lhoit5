@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+</head>
+<body class="bg-gray-100">
+    <nav class="bg-blue-600 p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-white text-2xl font-bold">JobConnect</h1>
+            <div id="navButtons" class="space-x-4">
+                <button onclick="showLoginModal()" class="bg-white text-blue-600 px-4 py-2 rounded">Login</button>
+                <button onclick="showSignupModal()" class="bg-transparent text-white border border-white px-4 py-2 rounded">Sign Up</button>
+            </div>
+            <div id="userInfo" class="hidden text-white">
+                <span id="userName"></span>
+                <button onclick="logout()" class="ml-4 bg-red-500 px-4 py-2 rounded">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container mx-auto p-4">
+        <div id="jobListings" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- Jobs will be loaded here -->
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center">
+        <div class="bg-white p-8 rounded-lg w-96">
+            <h2 class="text-2xl font-bold mb-4">Login</h2>
+            <div class="space-y-4">
+                <button onclick="signInWithGoogle()" class="w-full bg-red-500 text-white py-2 rounded">
+                    <i class="bi bi-google mr-2"></i> Login with Google
+                </button>
+                <div class="relative">
+                    <input type="tel" id="phoneNumber" placeholder="Phone Number" class="w-full border p-2 rounded">
+                    <button onclick="sendOTP()" class="absolute right-2 top-2 text-blue-600">Send OTP</button>
+                </div>
+                <input type="text" id="otpInput" placeholder="Enter OTP" class="w-full border p-2 rounded hidden">
+                <button onclick="verifyOTP()" id="verifyOTPButton" class="w-full bg-blue-600 text-white py-2 rounded hidden">
+                    Verify OTP
+                </button>
+                <select id="userType" class="w-full border p-2 rounded">
+                    <option value="worker">Worker</option>
+                    <option value="employer">Employer</option>
+                </select>
+                <button onclick="closeLoginModal()" class="w-full border border-gray-300 py-2 rounded mt-4">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Post Job Modal -->
+    <div id="postJobModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center">
+        <div class="bg-white p-8 rounded-lg w-96">
+            <h2 class="text-2xl font-bold mb-4">Post a Job</h2>
+            <div class="space-y-4">
+                <input type="text" id="jobTitle" placeholder="Job Title" class="w-full border p-2 rounded">
+                <textarea id="jobDescription" placeholder="Job Description" class="w-full border p-2 rounded h-32"></textarea>
+                <input type="text" id="salary" placeholder="Salary" class="w-full border p-2 rounded">
+                <input type="text" id="location" placeholder="Location" class="w-full border p-2 rounded">
+                <button onclick="postJob()" class="w-full bg-blue-600 text-white py-2 rounded">
+                    Post Job
+                </button>
+                <button onclick="closePostJobModal()" class="w-full border border-gray-300 py-2 rounded">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <button id="postJobButton" onclick="showPostJobModal()" class="fixed bottom-4 right-4 bg-blue-600 text-white p-4 rounded-full shadow-lg hidden">
+        <i class="bi bi-plus-lg"></i>
+    </button>
+
+    <script>
+        // Firebase Configuration
+        const firebaseConfig = {
+            // Your Firebase config here
+            apiKey: "your-api-key",
+            authDomain: "your-auth-domain",
+            projectId: "your-project-id",
+            storageBucket: "your-storage-bucket",
+            messagingSenderId: "your-messaging-sender-id",
+            appId: "your-app-id"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+
+        // Global Variables
+        let currentUser = null;
+        let userType = null;
+
+        // Authentication Functions
+        function showLoginModal() {
+            document.getElementById('loginModal').classList.remove('hidden');
+        }
+
+        function closeLoginModal() {
+            document.getElementById('loginModal').classList.add('hidden');
+        }
+
+        function signInWithGoogle() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider)
+                .then((result) => {
+                    currentUser = result.user;
+                    userType = document.getElementById('userType').value;
+                    saveUserToDatabase(currentUser, userType);
+                    closeLoginModal();
+                    updateUI();
+                })
+                .catch((error) => {
+                    console.error("Error signing in with Google:", error);
+                });
+        }
+
+        function sendOTP() {
+            const phoneNumber = document.getElementById('phoneNumber').value;
+            const appVerifier = new firebase.auth.RecaptchaVerifier('phoneNumber', {
+                'size': 'invisible'
+            });
+
+            auth.signInWithPhoneNumber(phoneNumber, appVerifier)
+                .then((confirmationResult) => {
+                    window.confirmationResult = confirmationResult;
+                    document.getElementById('otpInput').classList.remove('hidden');
+                    document.getElementById('verifyOTPButton').classList.remove('hidden');
+                })
+                .catch((error) => {
+                    console.error("Error sending OTP:", error);
+                });
+        }
+
+        function verifyOTP() {
+            const code = document.getElementById('otpInput').value;
+            window.confirmationResult.confirm(code)
+                .then((result) => {
+                    currentUser = result.user;
+                    userType = document.getElementById('userType').value;
+                    saveUserToDatabase(currentUser, userType);
+                    closeLoginModal();
+                    updateUI();
+                })
+                .catch((error) => {
+                    console.error("Error verifying OTP:", error);
+                });
+        }
+
+        function logout() {
+            auth.signOut()
+                .then(() => {
+                    currentUser = null;
+                    userType = null;
+                    updateUI();
+                })
+                .catch((error) => {
+                    console.error("Error signing out:", error);
+                });
+        }
+
+        // Database Functions
+        function saveUserToDatabase(user, type) {
+            database.ref('users/' + user.uid).set({
+                email: user.email,
+                type: type,
+                timestamp: Date.now()
+            });
+        }
+
+        function postJob() {
+            const jobData = {
+                title: document.getElementById('jobTitle').value,
+                description: document.getElementById('jobDescription').value,
+                salary: document.getElementById('salary').value,
+                location: document.getElementById('location').value,
+                employerId: currentUser.uid,
+                timestamp: Date.now()
+            };
+
+            database.ref('jobs').push(jobData)
+                .then(() => {
+                    closePostJobModal();
+                    loadJobs();
+                })
+                .catch((error) => {
+                    console.error("Error posting job:", error);
+                });
+        }
+
+        function applyForJob(jobId) {
+            const applicationData = {
+                jobId: jobId,
+                workerId: currentUser.uid,
+                timestamp: Date.now()
+            };
+
+            database.ref('applications').push(applicationData)
+                .then(() => {
+                    alert('Application submitted successfully!');
+                })
+                .catch((error) => {
+                    console.error("Error applying for job:", error);
+                });
+        }
+
+        function loadJobs() {
+            database.ref('jobs').on('value', (snapshot) => {
+                const jobListings = document.getElementById('jobListings');
+                jobListings.innerHTML = '';
+
+                snapshot.forEach((jobSnapshot) => {
+                    const job = jobSnapshot.val();
+                    const jobElement = createJobElement(job, jobSnapshot.key);
+                    jobListings.appendChild(jobElement);
+                });
+            });
+        }
+
+        function createJobElement(job, jobId) {
+            const div = document.createElement('div');
+            div.className = 'bg-white p-6 rounded-lg shadow-md';
+            div.innerHTML = `
+                <h3 class="text-xl font-bold mb-2">${job.title}</h3>
+                <p class="text-gray-600 mb-4">${job.description}</p>
+                <div class="flex items-center justify-between text-sm text-gray-500">
+                    <span><i class="bi bi-geo-alt"></i> ${job.location}</span>
+                    <span><i class="bi bi-currency-dollar"></i> ${job.salary}</span>
+                </div>
+                ${userType === 'worker' ? 
+                    `<button onclick="applyForJob('${jobId}')" class="mt-4 w-full bg-blue-600 text-white py-2 rounded">
+                        Apply Now
+                    </button>` : ''}
+            `;
+            return div;
+        }
+
+        // UI Functions
+        function updateUI() {
+            const navButtons = document.getElementById('navButtons');
+            const userInfo = document.getElementById('userInfo');
+            const postJobButton = document.getElementById('postJobButton');
+            const userName = document.getElementById('userName');
+
+            if (currentUser) {
+                navButtons.classList.add('hidden');
+                userInfo.classList.remove('hidden');
+                userName.textContent = currentUser.email || currentUser.phoneNumber;
+                
+                if (userType === 'employer') {
+                    postJobButton.classList.remove('hidden');
+                } else {
+                    postJobButton.classList.add('hidden');
+                }
+            } else {
+                navButtons.classList.remove('hidden');
+                userInfo.classList.add('hidden');
+                postJobButton.classList.add('hidden');
+            }
+        }
+
+        function showPostJobModal() {
+            document.getElementById('postJobModal').classList.remove('hidden');
+        }
+
+        function closePostJobModal() {
+            document.getElementById('postJobModal').classList.add('hidden');
+        }
+
+        // Initialize
+        auth.onAuthStateChanged((user) => {
+            currentUser = user;
+            if (user) {
+                database.ref('users/' + user.uid).once('value')
+                    .then((snapshot) => {
+                        userType = snapshot.val().type;
+                        updateUI();
+                    });
+            }
+            loadJobs();
+        });
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
